@@ -58,7 +58,8 @@ export async function resolveTargets(db: RunDb, ads: AdsPort, settings: RunSetti
   const saved = await db.get('targets');
   if (saved) return JSON.parse(saved);
 
-  const countryRows = await queryCounted(
+  // No country = worldwide: the campaign gets no location targeting, which Google serves in all countries.
+  const countryRows = settings.countries.length === 0 ? [] : await queryCounted(
     db,
     ads,
     cap,
@@ -104,7 +105,7 @@ export async function resolveTargets(db: RunDb, ads: AdsPort, settings: RunSetti
   }
   const targets: Targets = { labels, locationIds, languageIds };
   await db.set('targets', JSON.stringify(targets));
-  await db.set('targets_names', names.join(', '));
+  await db.set('targets_names', [...(settings.countries.length === 0 ? ['Worldwide'] : []), ...names].join(', '));
   return targets;
 }
 
@@ -201,6 +202,7 @@ export async function preflight(db: RunDb, ads: AdsPort, settings: RunSettings, 
     expect(isEnum(c.geo_target_type_setting?.positive_geo_target_type, 'PRESENCE'), `location option ${c.geo_target_type_setting?.positive_geo_target_type}`);
     expect(c.final_url_suffix === RSA_FINAL_URL_SUFFIX, 'tracking suffix differs');
     expect(Number(row?.campaign_budget?.amount_micros) === toMicros(settings.budget), `budget ${row?.campaign_budget?.amount_micros}`);
+    if (targets.locationIds.length === 0) expect(!criteria.some((r) => r.campaign_criterion?.location?.geo_target_constant), 'worldwide run, but the campaign has a location');
     for (const id of targets.locationIds) expect(criteria.some((r) => String(r.campaign_criterion?.location?.geo_target_constant ?? '').endsWith(`/${id}`)), `location ${id} missing`);
     for (const id of targets.languageIds) expect(criteria.some((r) => String(r.campaign_criterion?.language?.language_constant ?? '').endsWith(`/${id}`)), `language ${id} missing`);
     for (const label of targets.labels) expect(labelRows.some((r) => r.campaign_label?.label === label), `label ${label} missing`);

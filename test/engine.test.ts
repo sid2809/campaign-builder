@@ -437,3 +437,14 @@ test('late ad copy for an article that shares a keyword with an ad already in it
   const texts = ads.keywords.filter((k) => k.adGroupId === b.ad_group_id).map((k) => k.text).sort();
   assert.deepEqual(texts, ['chicken soup', 'soup a', 'soup b']);
 });
+
+test('no country = worldwide: campaigns get no location targeting, the preflight checks that, and no country lookup is made', async () => {
+  const { ads, db, ticks } = await setup({ countries: [] });
+  await ticks(6);
+  const campaigns = await db.campaigns();
+  assert.ok(campaigns.length > 0 && campaigns.every((c) => c.status === 'uploaded'), (await db.get('preflight_notes')) ?? '');
+  assert.ok(ads.live().every((c) => c.locations.length === 0 && c.languages.length === 1));
+  assert.ok(!ads.queries.some((q) => q.includes('country_code IN')));
+  assert.match((await db.get('preflight_notes')) ?? '', /Worldwide, English/);
+  assert.ok(ads.live().every((c) => c.fields.geo_target_type_setting.positive_geo_target_type === enums.PositiveGeoTargetType.PRESENCE));
+});

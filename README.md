@@ -28,6 +28,9 @@ The worker fetches Google's lists of countries and languages once (2 API operati
 offer them by full name. Until they are loaded the forms take codes (`US`, `en`). Either way the preflight asks
 Google for each one again before anything is created.
 
+No country selected means worldwide: the campaign is created without location targeting, and the preflight checks
+that its test campaign has none.
+
 ## Fixed rules
 
 - Google Search only; Maximize Clicks with a max CPC cap; presence targeting; text asset automation off.

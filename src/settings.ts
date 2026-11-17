@@ -8,7 +8,7 @@ export interface RunSettings {
   numbering: 'restart' | 'continue'; // restart at 0001, or continue after the domain's last number
   maxCpc: number; // Maximize Clicks, CPC capped at this (account currency)
   budget: number; // per campaign, per day (account currency)
-  countries: string[]; // 2-letter country codes, resolved by Google at preflight
+  countries: string[]; // 2-letter country codes, resolved by Google at preflight; empty = worldwide (no location targeting)
   languages: string[]; // language codes (e.g. en), resolved by Google at preflight
   matchType: MatchType;
   adsPerAdGroup: number;
@@ -66,7 +66,6 @@ export function parseSettings(form: Record<string, string | undefined>, forRun: 
   const numbering = form.numbering === 'continue' ? 'continue' : form.numbering === 'restart' ? 'restart' : undefined;
   if (!numbering) problems.push('Numbering: choose restart or continue');
   const countries = [...new Set(list(form.countries).map((c) => c.toUpperCase()))];
-  if (countries.length === 0) problems.push('Countries: at least one is required');
   for (const c of countries) if (!/^[A-Z]{2}$/.test(c)) problems.push(`Country "${c}" is not a 2-letter code (e.g. US, GB, CA)`);
   const languages = [...new Set(list(form.languages))];
   if (languages.length === 0) problems.push('Languages: at least one is required');

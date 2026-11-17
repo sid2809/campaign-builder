@@ -402,7 +402,7 @@ ${stat(counts.ads_rejected + counts.ads_no_copy, 'ads not created')}${stat(count
 <div class="card"><h2>Settings of this run</h2><table>
 ${setting('Labels', s.labels.join(', '))}${setting('Campaign name pattern', s.namePattern)}${setting('Numbering', s.numbering)}
 ${setting('Bidding', `Maximize Clicks, max CPC ₹${s.maxCpc}`)}${setting('Daily budget per campaign', `₹${s.budget}`)}
-${setting('Countries (presence)', namesOf(lists?.countries, s.countries))}${setting('Languages', namesOf(lists?.languages, s.languages))}${setting('Match type', s.matchType)}
+${setting('Countries (presence)', namesOf(lists?.countries, s.countries, 'Worldwide (no location targeting)'))}${setting('Languages', namesOf(lists?.languages, s.languages))}${setting('Match type', s.matchType)}
 ${setting('Structure', `${s.adsPerAdGroup} ads per ad group, ${s.adGroupsPerCampaign} ad groups per campaign`)}${setting('Pilot', s.pilot > 0 ? `${s.pilot} campaigns` : 'none')}
 ${setting('Review before publishing', s.review ? 'yes' : 'no')}${setting('Model', s.model)}${setting('Copy instructions', s.copyRules || 'default rules')}
 </table></div>`,

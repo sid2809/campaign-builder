@@ -76,8 +76,8 @@ export function problemsBox(problems: string[]): string {
 
 // The settings fields shared by a domain's defaults and a new run.
 // A pick-by-name field over one of Google's lists. The form still posts the codes (in the hidden input).
-function picker(name: string, label: string, items: ListItem[], value: string, hint: string): string {
-  return `<div><label for="${name}-search">${label}</label><div class="picker" data-picker>
+function picker(name: string, label: string, items: ListItem[], value: string, hint: string, whenEmpty = ''): string {
+  return `<div><label for="${name}-search">${label}</label><div class="picker" data-picker data-empty="${esc(whenEmpty)}">
 <div class="chips"></div>
 <input type="text" id="${name}-search" list="${name}-list" placeholder="Type a name…" autocomplete="off">
 <datalist id="${name}-list">${items.map((i) => `<option value="${esc(i.name)}" data-code="${esc(i.code)}"></option>`).join('')}</datalist>
@@ -94,6 +94,7 @@ document.querySelectorAll('[data-picker]').forEach(function (box) {
   function set(list) { hidden.value = list.join(', '); draw(); hidden.dispatchEvent(new Event('input', { bubbles: true })); }
   function draw() {
     chips.textContent = '';
+    if (codes().length === 0 && box.dataset.empty) { var none = document.createElement('span'); none.className = 'chip warn'; none.textContent = box.dataset.empty; chips.appendChild(none); }
     codes().forEach(function (code) {
       var chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = (nameOf[code] || code) + ' ';
       var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'Remove ' + (nameOf[code] || code));
@@ -135,8 +136,8 @@ ${text('maxCpc', 'Max CPC cap (₹)', 'Maximize Clicks, with the CPC capped at t
 ${text('budget', 'Daily budget per campaign (₹)', 'Each campaign gets its own budget.')}
 ${
     lists
-      ? picker('countries', 'Countries', lists.countries, v.countries ?? '', "From Google's list. One or several. People in these countries (presence).")
-      : text('countries', 'Countries', "2-letter codes, separated by commas (US, GB, CA). Google's list of names is not loaded yet. People in these countries (presence).")
+      ? picker('countries', 'Countries', lists.countries, v.countries ?? '', "From Google's list. One or several: people in these countries (presence). None selected = worldwide.", 'Worldwide (no country selected)')
+      : text('countries', 'Countries', "2-letter codes, separated by commas (US, GB, CA). Google's list of names is not loaded yet. People in these countries (presence). Empty = worldwide.")
   }
 ${
     lists

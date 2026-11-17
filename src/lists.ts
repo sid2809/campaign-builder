@@ -71,4 +71,4 @@ export function listProblems(lists: Lists | undefined, countries: string[], lang
   return problems;
 }
 
-export const namesOf = (items: ListItem[] | undefined, codes: string[]) => codes.map((code) => items?.find((x) => x.code === code)?.name ?? code).join(', ');
+export const namesOf = (items: ListItem[] | undefined, codes: string[], whenEmpty = '') => (codes.length === 0 ? whenEmpty : codes.map((code) => items?.find((x) => x.code === code)?.name ?? code).join(', '));

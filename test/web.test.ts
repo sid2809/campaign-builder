@@ -216,8 +216,12 @@ test('settings form: every wrong value is reported, nothing is corrected silentl
   assert.deepEqual(good.problems, []);
   assert.deepEqual(good.settings.labels, ['A', 'B']);
   assert.equal(good.settings.review, false);
-  const bad = parseSettings({ account: '12', labels: '', namePattern: 'x', numbering: '', maxCpc: 'abc', budget: '0', countries: '', languages: 'english', matchType: 'x', adsPerAdGroup: '4', adGroupsPerCampaign: '0', pilot: '-1', model: 'gpt', review: '' }, true);
+  const bad = parseSettings({ account: '12', labels: '', namePattern: 'x', numbering: '', maxCpc: 'abc', budget: '0', countries: 'usa', languages: 'english', matchType: 'x', adsPerAdGroup: '4', adGroupsPerCampaign: '0', pilot: '-1', model: 'gpt', review: '' }, true);
   assert.equal(bad.problems.length, 14, bad.problems.join('\n'));
+  // No country is allowed: it means worldwide.
+  const worldwide = parseSettings({ ...settingsToForm({ ...DEFAULT_SETTINGS, account: '197-844-9758', labels: ['A'], countries: [] }), review: 'no' }, true);
+  assert.deepEqual(worldwide.problems, []);
+  assert.deepEqual(worldwide.settings.countries, []);
 });
 
 test('countries and languages: Google\'s lists are loaded once and offered by name; before that the forms take codes', async () => {
@@ -257,8 +261,17 @@ test('countries and languages: Google\'s lists are loaded once and offered by na
   assert.match(unknownText, /Country &quot;XX&quot; is not in Google&#39;s list of countries/);
   assert.match(unknownText, /Language &quot;xx&quot; is not in Google&#39;s list of languages/);
   assert.equal((await post('/domains/new', { ...settingsToForm({ ...DEFAULT_SETTINGS, account: '197-000-0000', labels: ['L'] }), name: 'a.com', countries: 'US, GB', languages: 'en, zh_CN' })).status, 303);
-  const [domain] = await app.domains();
+  const domain = (await app.domains()).find((d) => d.name === 'a.com')!;
   assert.deepEqual(domain.defaults.languages, ['en', 'zh_CN']);
+
+  // No country picked: the form says worldwide, and the run page too.
+  const empty = await post('/domains/new', { ...settingsToForm({ ...DEFAULT_SETTINGS, account: '197-000-0000', labels: ['L'] }), name: 'world.com', countries: '' });
+  assert.equal(empty.status, 303);
+  const world = (await app.domains()).find((d) => d.name === 'world.com')!;
+  assert.deepEqual(world.defaults.countries, []);
+  assert.match(await (await get(`/runs/new?domain=${world.id}`)).text(), /data-empty="Worldwide \(no country selected\)"[\s\S]*name="countries" value=""/);
+  const worldRun = await post('/runs/new', { ...settingsToForm(world.defaults), name: 'World', review: 'yes', domain_id: String(world.id), csv: 'URL,Title,Keyword\nhttps://world.com/1/,Chicken,chicken', step: 'start' });
+  assert.match(await (await get(worldRun.headers.get('location')!)).text(), /Worldwide \(no location targeting\)/);
 
   // A run with those settings: names on the run page, and Google gets both countries and both languages.
   const started = await post('/runs/new', { ...settingsToForm(domain.defaults), name: 'Names', review: 'no', domain_id: String(domain.id), csv: 'URL,Title,Keyword\nhttps://a.com/1/,Chicken,chicken', step: 'start' });
