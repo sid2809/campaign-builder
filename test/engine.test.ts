@@ -421,3 +421,19 @@ test('the report has one line per row of the file, including rows that could not
     [9, 'Created', ''],
   ]);
 });
+
+test('late ad copy for an article that shares a keyword with an ad already in its ad group: the keyword is not added again', async () => {
+  const csv = 'URL,Title,Keyword\nhttps://example.com/a/,Chicken a,"chicken soup, soup a"\nhttps://example.com/b/,Chicken b,"chicken soup, soup b"';
+  const { ads, batches, db, ticks } = await setup({}, csv);
+  let late = true;
+  batches.answer = (req) => (late && req.custom_id === 'a1' ? { custom_id: req.custom_id, type: 'errored', error: 'overloaded' } : batches.defaultAnswer(req));
+  await ticks(8);
+  assert.equal((await db.articleByIndex(1))!.ad_status, 'skipped');
+  late = false;
+  await db.app.pool.query("UPDATE articles SET copy_status = 'pending', copy_attempts = 0, copy_error = NULL WHERE run_id = $1 AND row_index = 1", [db.runId]);
+  await ticks(3);
+  const b = (await db.articleByIndex(1))!;
+  assert.equal(b.ad_status, 'uploaded');
+  const texts = ads.keywords.filter((k) => k.adGroupId === b.ad_group_id).map((k) => k.text).sort();
+  assert.deepEqual(texts, ['chicken soup', 'soup a', 'soup b']);
+});

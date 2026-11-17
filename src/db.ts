@@ -576,6 +576,11 @@ export class RunDb {
   }
 
   // ---------- counts for the dashboard ----------
+  async adsPerCampaign(): Promise<Map<string, number>> {
+    const rows = await this.rows<{ campaign: string; n: number }>("SELECT campaign, COUNT(*)::int AS n FROM articles WHERE run_id = $1 AND ad_status = 'uploaded' GROUP BY campaign");
+    return new Map(rows.map((r) => [r.campaign, r.n]));
+  }
+
   async counts(): Promise<Record<string, number>> {
     const [a] = await this.rows<Record<string, number>>(
       `SELECT COUNT(*)::int AS articles,
