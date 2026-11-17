@@ -1,0 +1,23 @@
+{
+  "name": "campaign-builder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dashboard that turns article URLs into paused Google Ads search campaigns (responsive search ads)",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/main.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
+    "google-ads-api": "^26.1.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.9.0"
+  }
+}
