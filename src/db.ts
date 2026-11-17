@@ -180,8 +180,12 @@ export class AppDb {
     this.pool = new pg.Pool({ connectionString, max: 5 });
   }
 
+  // The dashboard and the worker both run this at start; the lock makes them take turns.
   async migrate(): Promise<void> {
-    await this.pool.query(SCHEMA);
+    await this.tx(async (q) => {
+      await q.query('SELECT pg_advisory_xact_lock(4207181)');
+      await q.query(SCHEMA);
+    });
   }
 
   async close(): Promise<void> {

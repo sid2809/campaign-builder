@@ -39,20 +39,30 @@ Google for each one again before anything is created.
 
 ## Run it on Railway
 
-One service (this repo) and one Postgres database in the same project.
+Two services from this repo and one Postgres database, in the same project. Both services use the start command
+`npm start`; the `ROLE` variable says which program a service runs.
+
+**Dashboard service** (needs a public domain: Settings > Networking > Generate Domain; health check path `/health`)
 
 | Variable | Value |
 | --- | --- |
+| `ROLE` | `web` |
 | `DATABASE_URL` | Reference to the Postgres service's `DATABASE_URL` |
 | `APP_PASSWORD` | The dashboard password (at least 12 characters) |
+| `SESSION_SECRET` | Optional. If unset, sign-ins end when the password changes |
+
+**Worker service** (no public domain)
+
+| Variable | Value |
+| --- | --- |
+| `ROLE` | `worker` |
+| `DATABASE_URL` | Reference to the Postgres service's `DATABASE_URL` |
 | `ANTHROPIC_API_KEY` | Same key as the rsa services |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Same as the rsa services |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | The MCC ID |
 | `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN` | Same as the rsa services |
-| `SESSION_SECRET` | Optional. If unset, sign-ins end when the password changes |
 
-Start command: `npm start`. The service needs a public domain (Railway: Settings > Networking > Generate Domain).
-Health check path: `/health`.
+Run exactly one worker (one replica): two workers would both act on the same runs.
 
 ## Develop
 
