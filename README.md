@@ -18,8 +18,15 @@ services are separate and are not changed by this one.
 6. **Preflight**: account and currency (INR), labels, countries and languages looked up in Google Ads, campaign
    names not already in the account, a validate-only check of one real campaign, a test campaign created,
    read back and removed.
-7. **Upload**: campaigns are created paused. Optional pilot first. Buttons: Enable pilot, Upload rest, Enable.
+7. **Upload**: campaigns are created paused. Optional pilot first (spread across themes). Buttons: Enable pilot,
+   Upload rest, Enable. Google's review results are fetched once a day (can be turned off per run) and on "Refresh now".
 8. **Report**: one line per row of the file, with the result and the reason. Nothing is left out silently.
+
+## Countries and languages
+
+The worker fetches Google's lists of countries and languages once (2 API operations) and stores them, so the forms
+offer them by full name. Until they are loaded the forms take codes (`US`, `en`). Either way the preflight asks
+Google for each one again before anything is created.
 
 ## Fixed rules
 

@@ -36,6 +36,7 @@ async function main(): Promise<void> {
   const deps: Deps = {
     app,
     batches: anthropicBatchClient(env.ANTHROPIC_API_KEY),
+    listsAccount: env.GOOGLE_ADS_LOGIN_CUSTOMER_ID,
     adsFor: (customerId) => {
       const cached = adsPorts.get(customerId);
       if (cached) return cached;

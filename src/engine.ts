@@ -10,12 +10,14 @@ import { AdsError, isQuotaError, type AdsPort } from './ads.ts';
 import { preflight, resolveTargets, campaignsInAccount, uploadCampaign, topUpCampaign, enableWave, sync, QuotaReached, googleQuotaExhausted } from './upload.ts';
 import { DEFAULT_DAILY_CAP, SYNC_EVERY_HOURS, UPLOAD_MAX_ATTEMPTS, type Wave } from './config.ts';
 import type { RunSettings } from './settings.ts';
+import { ensureLists } from './lists.ts';
 import { log } from './log.ts';
 
 export interface Deps {
   app: AppDb;
   batches: BatchClient;
   adsFor(customerId: string): AdsPort;
+  listsAccount?: string; // asked first for Google's country and language lists (the MCC)
 }
 
 export const DAILY_SYNC_DAYS = 7; // the daily sync runs this long after a run's last upload; "Refresh now" always works
@@ -135,7 +137,8 @@ async function syncIfDue(db: RunDb, ads: AdsPort, cap: number): Promise<void> {
   const lastSync = await db.get('last_sync');
   const lastUpload = await db.get('last_upload');
   const withinDailyWindow = !lastUpload || Date.now() - Date.parse(lastUpload) < DAILY_SYNC_DAYS * 24 * 3600 * 1000;
-  const dailyDue = withinDailyWindow && (!lastSync || Date.now() - Date.parse(lastSync) > SYNC_EVERY_HOURS * 3600 * 1000);
+  const dailyOn = (await db.get('daily_sync')) !== 'off';
+  const dailyDue = dailyOn && withinDailyWindow && (!lastSync || Date.now() - Date.parse(lastSync) > SYNC_EVERY_HOURS * 3600 * 1000);
   if (!requested && !dailyDue) return;
   await sync(db, ads, cap);
   await db.set('sync_requested', '0');
@@ -173,6 +176,12 @@ async function describe(db: RunDb, settings: RunSettings): Promise<void> {
 
 // One pass over every run that still needs the worker. One run's error never stops the others.
 export async function tickAll(deps: Deps): Promise<void> {
+  try {
+    const accounts = [deps.listsAccount ?? '', ...(await deps.app.domains()).map((d) => d.defaults.account), ...(await deps.app.runs()).map((r) => r.settings.account)];
+    await ensureLists(deps.app, deps.adsFor, accounts);
+  } catch (error) {
+    log(`lists: error: ${(error as Error).message}`);
+  }
   const active = await deps.app.activeRuns();
   const requested = await deps.app.pool.query("SELECT run_id FROM run_state WHERE key = 'sync_requested' AND value = '1'");
   const ids = [...new Set([...active.map((r) => r.id), ...requested.rows.map((r) => r.run_id as number)])].sort((a, b) => a - b);

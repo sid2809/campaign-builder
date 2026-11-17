@@ -85,7 +85,7 @@ export async function resolveTargets(db: RunDb, ads: AdsPort, settings: RunSetti
   );
   const languageIds: string[] = [];
   for (const code of settings.languages) {
-    const found = languageRows.filter((r) => String(r.language_constant?.code).toLowerCase() === code.toLowerCase());
+    const found = languageRows.filter((r) => String(r.language_constant?.code) === code);
     if (found.length !== 1) throw new Error(`language "${code}": Google returned ${found.length} matching targetable languages (expected exactly 1)`);
     languageIds.push(String(found[0].language_constant.id));
     names.push(String(found[0].language_constant.name));

@@ -68,9 +68,9 @@ export function parseSettings(form: Record<string, string | undefined>, forRun: 
   const countries = [...new Set(list(form.countries).map((c) => c.toUpperCase()))];
   if (countries.length === 0) problems.push('Countries: at least one is required');
   for (const c of countries) if (!/^[A-Z]{2}$/.test(c)) problems.push(`Country "${c}" is not a 2-letter code (e.g. US, GB, CA)`);
-  const languages = [...new Set(list(form.languages).map((c) => c.toLowerCase()))];
+  const languages = [...new Set(list(form.languages))];
   if (languages.length === 0) problems.push('Languages: at least one is required');
-  for (const c of languages) if (!/^[a-z]{2}(_[a-z]{2})?$/i.test(c)) problems.push(`Language "${c}" is not a language code (e.g. en, es)`);
+  for (const c of languages) if (!/^[a-z]{2,3}([_-][a-z0-9]{2,4})?$/i.test(c)) problems.push(`Language "${c}" is not a language code (e.g. en, es)`);
   const matchType = MATCH_TYPES.find((m) => m === form.matchType);
   if (!matchType) problems.push('Match type: choose phrase, exact or broad');
   const model = (MODELS as readonly string[]).includes(form.model ?? '') ? form.model! : undefined;

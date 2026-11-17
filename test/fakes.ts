@@ -77,13 +77,14 @@ export class FakeAds implements AdsPort {
   queries: string[] = [];
   currency = 'INR';
   countries: Record<string, { id: string; name: string }> = { US: { id: '2840', name: 'United States' }, GB: { id: '2826', name: 'United Kingdom' }, CA: { id: '2124', name: 'Canada' } };
-  languageList: Record<string, { id: string; name: string }> = { en: { id: '1000', name: 'English' }, es: { id: '1003', name: 'Spanish' } };
+  languageList: Record<string, { id: string; name: string }> = { en: { id: '1000', name: 'English' }, es: { id: '1003', name: 'Spanish' }, zh_CN: { id: '1017', name: 'Chinese (simplified)' } };
   labels = new Map<string, string>(); // name -> resource
   campaigns: FakeCampaign[] = [];
   budgets = new Map<string, number>();
   adGroups: { id: string; name: string; campaignId: string }[] = [];
   keywords: { adGroupId: string; text: string; matchType: number }[] = [];
   ads: { id: string; adGroupId: string; url: string; headlines: string[] }[] = [];
+  failLists = false; // the country list query fails (as for an account that may not be asked)
   failAdUrl: string | undefined; // Google rejects the ad with this final URL
   failKeyword: string | undefined; // Google rejects this keyword
   failNext: { kind: 'quota' | 'concurrent' | 'campaign'; times: number } | undefined; // the next N real mutates fail like this
@@ -196,10 +197,11 @@ export class FakeAds implements AdsPort {
     const quoted = [...gaql.matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((m) => m[1].replace(/\\'/g, "'"));
     if (gaql.includes('FROM customer')) return [{ customer: { currency_code: this.currency, auto_tagging_enabled: true, descriptive_name: 'Test account' } }];
     if (gaql.includes('FROM geo_target_constant')) {
-      return Object.entries(this.countries).filter(([code]) => quoted.includes(code)).map(([code, c]) => ({ geo_target_constant: { id: c.id, name: c.name, country_code: code } }));
+      if (this.failLists) throw new AdsError([{ index: undefined, message: 'Not allowed for this customer.', code: 'authorization_error.2' }], 'lists');
+      return Object.entries(this.countries).filter(([code]) => !gaql.includes('country_code IN') || quoted.includes(code)).map(([code, c]) => ({ geo_target_constant: { id: c.id, name: c.name, country_code: code } }));
     }
     if (gaql.includes('FROM language_constant')) {
-      return Object.entries(this.languageList).filter(([code]) => quoted.includes(code)).map(([code, c]) => ({ language_constant: { id: c.id, name: c.name, code } }));
+      return Object.entries(this.languageList).filter(([code]) => !gaql.includes('code IN') || quoted.includes(code)).map(([code, c]) => ({ language_constant: { id: c.id, name: c.name, code } }));
     }
     if (gaql.includes('FROM label')) return this.labels.has(quoted[0]) ? [{ label: { resource_name: this.labels.get(quoted[0]), name: quoted[0] } }] : [];
     if (gaql.includes('FROM campaign_criterion')) {

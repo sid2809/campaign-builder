@@ -1,5 +1,6 @@
 // Server-rendered pages. Every value shown goes through esc().
 import { MATCH_TYPES, MODELS } from './config.ts';
+import type { ListItem, Lists } from './lists.ts';
 
 export const esc = (value: unknown): string =>
   String(value ?? '')
@@ -49,6 +50,7 @@ form.inline{display:inline}
 details{border-top:1px solid var(--line);padding:8px 0}details:first-of-type{border-top:0}
 summary{cursor:pointer;font-weight:600}
 .adgroup{margin:8px 0 8px 16px}.ad{margin:6px 0 10px 16px;color:var(--muted);font-size:12.5px}.ad b{color:var(--text);font-weight:550}
+.picker .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.picker .chips:empty{display:none}.chip .x{background:none;border:0;color:var(--muted);padding:0 0 0 2px;font-size:14px;line-height:1;cursor:pointer}
 .radio{display:flex;gap:16px}.radio label{font-weight:400;display:flex;gap:6px;align-items:center;margin:0}
 .login{max-width:340px;margin:12vh auto}
 .muted{color:var(--muted)}
@@ -73,7 +75,45 @@ export function problemsBox(problems: string[]): string {
 }
 
 // The settings fields shared by a domain's defaults and a new run.
-export function settingsFields(v: Record<string, string>, forRun: boolean): string {
+// A pick-by-name field over one of Google's lists. The form still posts the codes (in the hidden input).
+function picker(name: string, label: string, items: ListItem[], value: string, hint: string): string {
+  return `<div><label for="${name}-search">${label}</label><div class="picker" data-picker>
+<div class="chips"></div>
+<input type="text" id="${name}-search" list="${name}-list" placeholder="Type a name…" autocomplete="off">
+<datalist id="${name}-list">${items.map((i) => `<option value="${esc(i.name)}" data-code="${esc(i.code)}"></option>`).join('')}</datalist>
+<input type="hidden" name="${name}" value="${esc(value)}"></div><p class="hint">${hint}</p></div>`;
+}
+
+const PICKER_SCRIPT = `<script>
+document.querySelectorAll('[data-picker]').forEach(function (box) {
+  var hidden = box.querySelector('input[type=hidden]'), search = box.querySelector('input[type=text]'), chips = box.querySelector('.chips');
+  var options = Array.prototype.slice.call(box.querySelectorAll('option'));
+  var nameOf = {}, codeOf = {};
+  options.forEach(function (o) { nameOf[o.dataset.code] = o.value; codeOf[o.value.toLowerCase()] = o.dataset.code; });
+  function codes() { return hidden.value.split(',').map(function (c) { return c.trim(); }).filter(Boolean); }
+  function set(list) { hidden.value = list.join(', '); draw(); hidden.dispatchEvent(new Event('input', { bubbles: true })); }
+  function draw() {
+    chips.textContent = '';
+    codes().forEach(function (code) {
+      var chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = (nameOf[code] || code) + ' ';
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'Remove ' + (nameOf[code] || code));
+      x.addEventListener('click', function () { set(codes().filter(function (c) { return c !== code; })); });
+      chip.appendChild(x); chips.appendChild(chip);
+    });
+  }
+  function add() {
+    var code = codeOf[search.value.trim().toLowerCase()];
+    if (!code) return;
+    if (codes().indexOf(code) < 0) set(codes().concat([code]));
+    search.value = '';
+  }
+  search.addEventListener('input', add); search.addEventListener('change', add);
+  search.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  draw();
+});
+</script>`;
+
+export function settingsFields(v: Record<string, string>, forRun: boolean, lists?: Lists): string {
   const text = (name: string, label: string, hint: string, extra = '') =>
     `<div><label for="${name}">${label}</label><input type="text" id="${name}" name="${name}" value="${esc(v[name] ?? '')}" ${extra}><p class="hint">${hint}</p></div>`;
   const select = (name: string, label: string, options: [string, string][], hint: string) =>
@@ -93,8 +133,16 @@ ${text('namePattern', 'Campaign name pattern', '{theme} and {number} are filled 
 ${select('numbering', 'Campaign numbering', [['restart', 'Restart at 0001'], ['continue', "Continue after the domain's last number"]], 'Google does not allow two campaigns with the same name in one account.')}
 ${text('maxCpc', 'Max CPC cap (₹)', 'Maximize Clicks, with the CPC capped at this.')}
 ${text('budget', 'Daily budget per campaign (₹)', 'Each campaign gets its own budget.')}
-${text('countries', 'Countries', '2-letter codes, separated by commas (US, GB, CA). People in these countries (presence).')}
-${text('languages', 'Languages', 'Language codes, separated by commas (en, es).')}
+${
+    lists
+      ? picker('countries', 'Countries', lists.countries, v.countries ?? '', "From Google's list. One or several. People in these countries (presence).")
+      : text('countries', 'Countries', "2-letter codes, separated by commas (US, GB, CA). Google's list of names is not loaded yet. People in these countries (presence).")
+  }
+${
+    lists
+      ? picker('languages', 'Languages', lists.languages, v.languages ?? '', "From Google's list. One or several.")
+      : text('languages', 'Languages', "Language codes, separated by commas (en, es). Google's list of names is not loaded yet.")
+  }
 ${select('matchType', 'Keyword match type', MATCH_TYPES.map((m) => [m, m[0] + m.slice(1).toLowerCase()] as [string, string]), 'Applies to every keyword of the run.')}
 ${text('adsPerAdGroup', 'Ads per ad group', '1 to 3. Google allows at most 3 enabled responsive search ads in an ad group.')}
 ${text('adGroupsPerCampaign', 'Ad groups per campaign', 'A campaign never mixes themes.')}
@@ -103,7 +151,7 @@ ${select('model', 'Model', MODELS.map((m) => [m, m] as [string, string]), 'Used 
 ${review}
 <div class="wide"><label for="copyRules">Copy instructions</label><textarea id="copyRules" name="copyRules" placeholder="Leave empty to use the default rules (no clickbait wording; &quot;Best&quot; and &quot;2026&quot; where natural).">${esc(v.copyRules ?? '')}</textarea>
 <p class="hint">One instruction per line. Always 15 headlines (30 characters) and 4 descriptions (90 characters). Tracking suffix: the same as Faith and Kitchen. Networks: Google Search only.</p></div>
-</div>`;
+</div>${lists ? PICKER_SCRIPT : ''}`;
 }
 
 export function chip(text: string, kind: '' | 'ok' | 'warn' | 'bad' = ''): string {

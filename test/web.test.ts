@@ -115,7 +115,9 @@ test('full flow through the dashboard: domain, run with review and pilot, confir
   // A button that doesn't belong to the current state changes nothing.
   assert.match(decodeURIComponent((await post(`${runPath}/action`, { action: 'approve' })).headers.get('location')!), /Nothing changed/);
   assert.match(decodeURIComponent((await post(`${runPath}/action`, { action: 'enable_pilot' })).headers.get('location')!), /Nothing changed/);
-  assert.equal(ads.calls.length + ads.queries.length, 0);
+  // Only the one-time fetch of Google's country and language lists (2 read-only queries); nothing about the run.
+  assert.equal(ads.calls.length, 0);
+  assert.ok(ads.queries.length === 2 && ads.queries.every((q) => /FROM (geo_target_constant|language_constant)/.test(q)));
   const tooLong = await post(`${runPath}/action`, { action: 'confirm_themes', themes: 'Chicken\nA theme name that is far too long to be used' });
   assert.match(decodeURIComponent(tooLong.headers.get('location')!), /longer than 30 characters/);
   await post(`${runPath}/action`, { action: 'confirm_themes', themes: 'Chicken\r\nCakes\r\n' });
@@ -128,7 +130,9 @@ test('full flow through the dashboard: domain, run with review and pilot, confir
   assert.match(review, /Headline Number 1 \| Headline Number 2/);
   assert.match(review, /keywords: [^<]*best chicken soup/);
   assert.match(review, /Approve and start the upload/);
-  assert.equal(ads.calls.length + ads.queries.length, 0);
+  // Only the one-time fetch of Google's country and language lists (2 read-only queries); nothing about the run.
+  assert.equal(ads.calls.length, 0);
+  assert.ok(ads.queries.length === 2 && ads.queries.every((q) => /FROM (geo_target_constant|language_constant)/.test(q)));
   await post(`${runPath}/action`, { action: 'approve' });
 
   // Pilot (1 campaign) uploaded paused; rest waits.
@@ -214,4 +218,84 @@ test('settings form: every wrong value is reported, nothing is corrected silentl
   assert.equal(good.settings.review, false);
   const bad = parseSettings({ account: '12', labels: '', namePattern: 'x', numbering: '', maxCpc: 'abc', budget: '0', countries: '', languages: 'english', matchType: 'x', adsPerAdGroup: '4', adGroupsPerCampaign: '0', pilot: '-1', model: 'gpt', review: '' }, true);
   assert.equal(bad.problems.length, 14, bad.problems.join('\n'));
+});
+
+test('countries and languages: Google\'s lists are loaded once and offered by name; before that the forms take codes', async () => {
+  const { app, get, post, login, ads, ticks, batches } = await start();
+  await login();
+  // Not loaded yet: plain code fields.
+  let form = await (await get('/domains/new')).text();
+  assert.match(form, /name="countries" value="US"/);
+  assert.match(form, /Google&#39;s list of names is not loaded yet|Google's list of names is not loaded yet/);
+  assert.doesNotMatch(form, /data-picker/);
+
+  // The first account asked can't answer; the next one can. The failure is shown until then.
+  const asked: string[] = [];
+  const deps: Deps = { app, batches, listsAccount: '111-111-1111', adsFor: (id) => (asked.push(id), ads) };
+  ads.failLists = true;
+  await tickAll(deps);
+  assert.match(await (await get('/')).text(), /could not be loaded yet[\s\S]*Not allowed for this customer/);
+  await tickAll(deps);
+  assert.equal(asked.length, 1, 'not tried again within 30 minutes');
+  ads.failLists = false;
+  await app.setSetting('google_lists_tried', new Date(Date.now() - 31 * 60 * 1000).toISOString());
+  await tickAll(deps);
+  const queriesAfterLoad = ads.queries.length;
+  await tickAll(deps);
+  assert.equal(ads.queries.length, queriesAfterLoad, 'loaded once, never fetched again');
+  assert.doesNotMatch(await (await get('/')).text(), /could not be loaded yet/);
+
+  // Loaded: pick by full name; the form still posts codes.
+  form = await (await get('/domains/new')).text();
+  assert.match(form, /data-picker/);
+  assert.match(form, /<option value="United Kingdom" data-code="GB">/);
+  assert.match(form, /<option value="Chinese \(simplified\)" data-code="zh_CN">/);
+  assert.match(form, /<input type="hidden" name="countries" value="US">/);
+  const unknown = await post('/domains/new', { ...settingsToForm(DEFAULT_SETTINGS), name: 'a.com', countries: 'US, XX', languages: 'en, xx' });
+  assert.equal(unknown.status, 400);
+  const unknownText = await unknown.text();
+  assert.match(unknownText, /Country &quot;XX&quot; is not in Google&#39;s list of countries/);
+  assert.match(unknownText, /Language &quot;xx&quot; is not in Google&#39;s list of languages/);
+  assert.equal((await post('/domains/new', { ...settingsToForm({ ...DEFAULT_SETTINGS, account: '197-000-0000', labels: ['L'] }), name: 'a.com', countries: 'US, GB', languages: 'en, zh_CN' })).status, 303);
+  const [domain] = await app.domains();
+  assert.deepEqual(domain.defaults.languages, ['en', 'zh_CN']);
+
+  // A run with those settings: names on the run page, and Google gets both countries and both languages.
+  const started = await post('/runs/new', { ...settingsToForm(domain.defaults), name: 'Names', review: 'no', domain_id: String(domain.id), csv: 'URL,Title,Keyword\nhttps://a.com/1/,Chicken,chicken', step: 'start' });
+  const runPath = started.headers.get('location')!;
+  await ticks(4);
+  const text = await (await get(runPath)).text();
+  assert.match(text, /United Kingdom, United States|United States, United Kingdom/);
+  assert.match(text, /English, Chinese \(simplified\)/);
+  const [campaign] = ads.live();
+  assert.deepEqual(campaign.locations.sort(), ['geoTargetConstants/2826', 'geoTargetConstants/2840']);
+  assert.deepEqual(campaign.languages.sort(), ['languageConstants/1000', 'languageConstants/1017']);
+});
+
+test('daily sync can be turned off per run; "Refresh now" still works', async () => {
+  const { app, get, post, login, ticks } = await start();
+  await login();
+  await post('/domains/new', { ...settingsToForm({ ...DEFAULT_SETTINGS, account: '197-000-0000', labels: ['L'] }), name: 'a.com' });
+  const [domain] = await app.domains();
+  const started = await post('/runs/new', { ...settingsToForm(domain.defaults), name: 'Sync', review: 'no', domain_id: String(domain.id), csv: 'URL,Title,Keyword\nhttps://a.com/1/,Chicken,chicken', step: 'start' });
+  const runPath = started.headers.get('location')!;
+  const db = app.forRun(1);
+  await ticks(4);
+  const first = (await db.get('last_sync'))!;
+  assert.ok(first);
+  assert.match(await (await get(runPath)).text(), /Daily sync of Google's review results: <b>on<\/b>/);
+  // A day later the daily sync is due.
+  const dayAgo = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+  await db.set('last_sync', dayAgo);
+  await post(`${runPath}/action`, { action: 'toggle_daily_sync' });
+  assert.match(await (await get(runPath)).text(), /Daily sync of Google's review results: <b>off<\/b>/);
+  await ticks(2);
+  assert.equal(await db.get('last_sync'), dayAgo, 'no daily sync while it is off');
+  await post(`${runPath}/action`, { action: 'refresh' });
+  await ticks(1);
+  assert.notEqual(await db.get('last_sync'), dayAgo, 'Refresh now works with daily sync off');
+  await db.set('last_sync', dayAgo);
+  await post(`${runPath}/action`, { action: 'toggle_daily_sync' });
+  await ticks(1);
+  assert.notEqual(await db.get('last_sync'), dayAgo, 'daily sync runs again once it is on');
 });
